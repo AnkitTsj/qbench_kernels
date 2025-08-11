@@ -33,29 +33,93 @@
 
 
 
+// #include <windows.h>
+// #include <algorithm>
+
+// enum class QuantType { Q4_K_M, Q8_0, UNKNOWN };
+
+// QuantType detectQuant(const std::string& p) {
+//     std::string f = p; 
+//     std::transform(f.begin(), f.end(), f.begin(), ::tolower);
+//     if (f.find("q4_k_m") != std::string::npos) return QuantType::Q4_K_M;
+//     if (f.find("q8_0")   != std::string::npos) return QuantType::Q8_0;
+//     return QuantType::UNKNOWN;
+// }
+
+
+// using mulQ4_t = void(*)(float*, uint8_t*, uint16_t*, int, int);
+// using mulQ8_t = void(*)(float*, uint8_t*, uint16_t*, int, int);
+
+
+// static mulQ4_t mulQ4Mat = nullptr;
+// static mulQ8_t mulQ8Mat = nullptr;
+// bool loadKernel(QuantType t) {
+//     const char* dll = (t == QuantType::Q4_K_M) ? "libsmolkernels_q4.dll"
+//                                                : "libsmolkernels_q8.dll";
+    
+//     HMODULE h = LoadLibraryA(dll);
+//     if (!h) { 
+//         printf("------DLL %s not found\n------", dll); 
+//         return false; 
+//     }
+    
+//     bool success = false;
+    
+//     if (t == QuantType::Q4_K_M) {
+//         mulQ4Mat = (mulQ4_t)GetProcAddress(h, "mulQ4Mat");
+//         if (mulQ4Mat) {
+//             printf("------Loaded 4-bit kernel: mulQ4Mat from %s\n------", dll);
+//             success = true;
+//         } else {
+//             printf("------Failed to find mulQ4Mat in %s\n ------", dll);
+//         }
+//     } 
+//     else if (t == QuantType::Q8_0) {
+//         mulQ8Mat = (mulQ8_t)GetProcAddress(h, "mulQ8Mat");
+//         if (mulQ8Mat) {
+//             printf("------Loaded 8-bit kernel: mulQ8Mat from %s\n------", dll);
+//             success = true;
+//         } else {
+//             printf("------Failed to find mulQ8Mat in %s\n------", dll);
+//         }
+//     }
+    
+//     return success;
+// }
 #include <windows.h>
 #include <algorithm>
 
-enum class QuantType { Q4_K_M, Q8_0, UNKNOWN };
+enum class QuantType { Q4_K_M, Q5_K_M, Q6_K, Q8_0, UNKNOWN };
 
 QuantType detectQuant(const std::string& p) {
     std::string f = p; 
     std::transform(f.begin(), f.end(), f.begin(), ::tolower);
     if (f.find("q4_k_m") != std::string::npos) return QuantType::Q4_K_M;
+    if (f.find("q5_k_m") != std::string::npos) return QuantType::Q5_K_M;
+    if (f.find("q6_k")   != std::string::npos) return QuantType::Q6_K;
     if (f.find("q8_0")   != std::string::npos) return QuantType::Q8_0;
     return QuantType::UNKNOWN;
 }
 
-
 using mulQ4_t = void(*)(float*, uint8_t*, uint16_t*, int, int);
+using mulQ5_t = void(*)(float*, uint8_t*, uint16_t*, int, int);
+using mulQ6_t = void(*)(float*, uint8_t*, uint16_t*, int, int);
 using mulQ8_t = void(*)(float*, uint8_t*, uint16_t*, int, int);
 
-
 static mulQ4_t mulQ4Mat = nullptr;
+static mulQ5_t mulQ5Mat = nullptr;
+static mulQ6_t mulQ6Mat = nullptr;
 static mulQ8_t mulQ8Mat = nullptr;
+
 bool loadKernel(QuantType t) {
-    const char* dll = (t == QuantType::Q4_K_M) ? "libsmolkernels_q4.dll"
-                                               : "libsmolkernels_q8.dll";
+    const char* dll = nullptr;
+    switch (t) {
+        case QuantType::Q4_K_M: dll = "libsmolkernels_q4.dll"; break;
+        case QuantType::Q5_K_M: dll = "libsmolkernels_q5.dll"; break;
+        case QuantType::Q6_K:   dll = "libsmolkernels_q6.dll"; break;
+        case QuantType::Q8_0:   dll = "libsmolkernels_q8.dll"; break;
+        default: return false;
+    }
     
     HMODULE h = LoadLibraryA(dll);
     if (!h) { 
@@ -65,28 +129,50 @@ bool loadKernel(QuantType t) {
     
     bool success = false;
     
-    if (t == QuantType::Q4_K_M) {
-        mulQ4Mat = (mulQ4_t)GetProcAddress(h, "mulQ4Mat");
-        if (mulQ4Mat) {
-            printf("------Loaded 4-bit kernel: mulQ4Mat from %s\n------", dll);
-            success = true;
-        } else {
-            printf("------Failed to find mulQ4Mat in %s\n ------", dll);
-        }
-    } 
-    else if (t == QuantType::Q8_0) {
-        mulQ8Mat = (mulQ8_t)GetProcAddress(h, "mulQ8Mat");
-        if (mulQ8Mat) {
-            printf("------Loaded 8-bit kernel: mulQ8Mat from %s\n------", dll);
-            success = true;
-        } else {
-            printf("------Failed to find mulQ8Mat in %s\n------", dll);
-        }
+    switch (t) {
+        case QuantType::Q4_K_M:
+            mulQ4Mat = (mulQ4_t)GetProcAddress(h, "mulQ4Mat");
+            if (mulQ4Mat) {
+                printf("------Loaded 4-bit kernel: mulQ4Mat from %s\n------", dll);
+                success = true;
+            } else {
+                printf("------Failed to find mulQ4Mat in %s\n ------", dll);
+            }
+            break;
+            
+        case QuantType::Q5_K_M:
+            mulQ5Mat = (mulQ5_t)GetProcAddress(h, "mulQ5Mat");
+            if (mulQ5Mat) {
+                printf("------Loaded 5-bit kernel: mulQ5Mat from %s\n------", dll);
+                success = true;
+            } else {
+                printf("------Failed to find mulQ5Mat in %s\n------", dll);
+            }
+            break;
+            
+        case QuantType::Q6_K:
+            mulQ6Mat = (mulQ6_t)GetProcAddress(h, "mulQ6Mat");
+            if (mulQ6Mat) {
+                printf("------Loaded 6-bit kernel: mulQ6Mat from %s\n------", dll);
+                success = true;
+            } else {
+                printf("------Failed to find mulQ6Mat in %s\n------", dll);
+            }
+            break;
+            
+        case QuantType::Q8_0:
+            mulQ8Mat = (mulQ8_t)GetProcAddress(h, "mulQ8Mat");
+            if (mulQ8Mat) {
+                printf("------Loaded 8-bit kernel: mulQ8Mat from %s\n------", dll);
+                success = true;
+            } else {
+                printf("------Failed to find mulQ8Mat in %s\n------", dll);
+            }
+            break;
     }
     
     return success;
 }
-
 
 
 static llama_context           ** g_ctx;
@@ -148,18 +234,40 @@ int main(int argc, char ** argv) {
         return 1;
     }
     std::cout<<"LOADED!----------------!"<<std::endl;
+    // std::string model_path = "";
+    // for (int i = 1; i < argc - 1; i++) {
+    //         if (strcmp(argv[i], "-m") == 0) {
+    //             model_path = argv[i + 1];
+    //             break;
+    //         }
+    //     }
+    // QuantType qt = detectQuant(model_path);
+    // if (qt != QuantType::UNKNOWN && loadKernel(qt))
+    //     printf("Custom kernel loaded for %s\n", (qt == QuantType::Q4_K_M) ? "Q4" : "Q8");
+    // else
+    //     printf("Running with default kernels\n");
+
     std::string model_path = "";
     for (int i = 1; i < argc - 1; i++) {
-            if (strcmp(argv[i], "-m") == 0) {
-                model_path = argv[i + 1];
-                break;
-            }
+        if (strcmp(argv[i], "-m") == 0) {
+            model_path = argv[i + 1];
+            break;
         }
+    }
+    
     QuantType qt = detectQuant(model_path);
-    if (qt != QuantType::UNKNOWN && loadKernel(qt))
-        printf("Custom kernel loaded for %s\n", (qt == QuantType::Q4_K_M) ? "Q4" : "Q8");
-    else
+    if (qt != QuantType::UNKNOWN && loadKernel(qt)) {
+        const char* quantName = nullptr;
+        switch (qt) {
+            case QuantType::Q4_K_M: quantName = "Q4_K_M"; break;
+            case QuantType::Q5_K_M: quantName = "Q5_K_M"; break;
+            case QuantType::Q6_K:   quantName = "Q6_K"; break;
+            case QuantType::Q8_0:   quantName = "Q8_0"; break;
+        }
+        printf("Custom kernel loaded for %s\n", quantName);
+    } else {
         printf("Running with default kernels\n");
+    }
 
     common_init();
 
